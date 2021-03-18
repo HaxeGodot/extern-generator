@@ -1,0 +1,9 @@
+{
+	"haxe.configurations": [
+		{
+			"label": "Completion",
+			"args": []
+		}
+	],
+	"haxe.enableCompilationServer": false
+}

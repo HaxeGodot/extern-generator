@@ -1,0 +1,10 @@
+-D unsafe
+--cs build
+--net-lib ./input/GodotSharp.dll
+--macro Generate.api()
+--macro addGlobalMetadata("godot", "@:build(Generate.build())")
+-D no-compilation
+-D net-ver=50
+--class-path src
+--main Main
+-D dump=pretty
