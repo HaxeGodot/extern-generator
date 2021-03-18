@@ -6,6 +6,8 @@ A generated version is available at <https://github.com/HaxeGodot/godot/>.
 
 ## How to use
 
+You need the commits from <https://github.com/HaxeGodot/haxe/tree/cs-opt> to properly generate the function overloads.
+
 Create an `input/` directory with:
 
 * `GodotSharp.dll` and `GodotSharp.xml` you can with in the `.mono` folder of a Godot C# project
