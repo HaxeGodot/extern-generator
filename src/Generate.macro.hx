@@ -882,7 +882,7 @@ class Generate {
 
 							if (fargs.length > 0) {
 								switch (fargs[fargs.length - 1].type) {
-									case macro :cs.NativeArray<$x>:
+									case macro :cs.NativeArray<$x> if (field.name != "new"):
 										fargs[fargs.length - 1].type = macro:haxe.Rest<$x>;
 										fargs[fargs.length - 1].opt = false;
 									default:
