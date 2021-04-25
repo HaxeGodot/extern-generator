@@ -1,3 +1,7 @@
+![](https://raw.github.com/HaxeGodot/godot/main/.github/logo.png)
+
+[haxe externs](https://github.com/HaxeGodot/godot) | [editor plugin](https://github.com/HaxeGodot/editor-plugin) | [demo](https://github.com/HaxeGodot/squash-the-creeps-3d) | [api doc](https://haxegodot.github.io/godot/) | [discussions](https://github.com/HaxeGodot/godot/discussions)
+
 # Godot extern generator
 
 Generate Haxe/C# externs for Godot.
