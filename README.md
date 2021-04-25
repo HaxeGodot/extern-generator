@@ -27,6 +27,9 @@ You can change the root directory from the current working directory by adding `
 * Mark deprecated functions
 * Array access on `Vector2`, `Vector3`, `Transform`, `Transform2D`, `Quat`, `Color` and `Basis`
 * Missing types `Godot.DynamicGodotObject` and `Godot.MarshalUtils`
+* Explicit constructors
+* Function with type parameters on `PackedScene.Instance`, `PackedScene.InstanceOrNull`
+* `cs.system.EventHandler_1` on `GD.UnhandledException`
 
 ## License
 
