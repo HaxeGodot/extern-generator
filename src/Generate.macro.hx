@@ -10,10 +10,31 @@ import sys.io.File;
 
 using StringTools;
 
+typedef Api = {
+	name:String,
+	signals:Array<Signal>,
+}
+
+typedef Signal = {
+	name:String,
+	arguments:Array<{
+		name:String,
+		type:String,
+		has_default_value:Bool,
+		default_value:String
+	}>,
+	handler:String, // Added custom field
+}
+
+// TODO https://github.com/HaxeFoundation/dox/issues/281
+// TODO https://github.com/godotengine/godot/issues/28293
+// TODO https://github.com/HaxeFoundation/hxcs/issues/51
+// TODO check flags xorability
 // TODO add System.ObsoleteAttribute parsing to haxe
 class Generate {
 	static var docCache:Map<String, String> = null;
 	static var docUseCache:Map<String, Bool> = null;
+	static var signalCache:Map<String, Array<Signal>> = null;
 
 	static function recDeleteDirectory(path:String) {
 		if (!FileSystem.exists(path) || !FileSystem.isDirectory(path)) {
@@ -40,6 +61,162 @@ class Generate {
 		}
 	}
 
+	static function extractDoc(xml:Access):String {
+		var doc = "";
+		var textParse;
+
+		function cref(ref:String):String {
+			final t = ref.charAt(0);
+			return switch (t) {
+				case "T":
+					if (ref.startsWith("T:Godot.")) {
+						final path = ref.substr(2).split(".");
+						path.shift();
+
+						"godot." + path.join("_");
+					} else if (ref.startsWith("T:System")) {
+						switch (ref) {
+							case "T:System.String": "String";
+							case "T:System.Boolean": "Bool";
+							case "T:System.Int32": "Int";
+							case "T:System.Single": "Single";
+							case "T:System.Byte": "cs.UInt8";
+							default:
+								final path = ref.substr(2).split(".");
+								final name = path.pop();
+								'cs.${path.map(p -> p.toLowerCase()).join(".")}.$name';
+						}
+					} else {
+						throw "Unsupported " + ref;
+					}
+
+				case "M", "F", "P":
+					if (!ref.substr(1).startsWith(":Godot.")) {
+						throw "Unsupported " + ref;
+					}
+
+					var p = ref.indexOf("(");
+					if (p == -1) {
+						p = ref.length;
+					}
+					final path = ref.substring(2, p).split(".");
+					path.shift();
+					var field = path.pop();
+					final path = path.join("_");
+
+					if (path == "Mathf" && t == "F") {
+						field = field.toUpperCase();
+					} else {
+						field = field.substr(0, 1).toLowerCase() + field.substr(1);
+					}
+
+					'godot.${path}.${field}';
+
+				case "!":
+					ref.substr(2);
+
+				default:
+					throw "Unsupported " + ref;
+			}
+		}
+
+		function innerParse(elem:Access) {
+			switch (elem.name) {
+				case "summary", "remarks", "example", "description":
+					textParse(elem);
+
+				case "para":
+					textParse(elem);
+					doc += "\n";
+
+				case "value":
+					doc += "\nValue: ";
+					textParse(elem);
+					doc += "\n";
+
+				case "returns":
+					doc += "\n@returns ";
+					textParse(elem);
+					doc += "\n";
+
+				case "param":
+					doc += '\n@param ${elem.att.name} ';
+					textParse(elem);
+
+				case "see":
+					if (elem.has.cref) {
+						doc += '`${cref(elem.att.cref)}`';
+					} else if (elem.has.langword) {
+						doc += '`${elem.att.langword}`';
+					} else {
+						throw "Unsupported see " + elem;
+					}
+
+				case "exception":
+					doc += '@throws ${cref(elem.att.cref)}';
+
+				case "c":
+					doc += "`";
+					textParse(elem);
+					doc += "`";
+
+				case "paramref":
+					doc += '`${elem.att.name}`';
+
+				case "code":
+					doc += "\n```\n";
+					textParse(elem);
+					doc += "\n```";
+
+				case "a":
+					doc += '[${elem.att.href}](';
+					textParse(elem);
+					doc += ")";
+
+				default:
+					throw "Unsupported " + elem.name;
+			}
+		}
+
+		function parse(elem:Access) {
+			final elements = [for (e in elem.elements) e];
+
+			if (elements.length == 0) {
+				innerParse(elem);
+			} else {
+				for (child in elements) {
+					innerParse(child);
+				}
+			}
+		}
+
+		textParse = (node:Access) -> {
+			for (i in node.x) {
+				switch (i.nodeType) {
+					case Element:
+						innerParse(new Access(i));
+					case PCData:
+						doc += i.toString();
+					default:
+						throw "Unsupported " + i.nodeType;
+				}
+			}
+		}
+
+		parse(xml);
+		return doc;
+	}
+
+	static function reindentDoc(doc:String, indent:Bool):String {
+		// TODO this removes indentation on code blocs
+		final indent = indent ? "\t" : "";
+		final value = doc.split("\n").map(line -> line.trim());
+		while (value.length > 0 && value[value.length - 1] == "") {
+			value.pop();
+		}
+		return value.join("\n").replace("\n\n\n", "\n\n").split("\n").map(line -> indent + indent + line).join("\n");
+	}
+
 	static function api() {
 		Sys.println("Generating externs for Godot...");
 
@@ -48,6 +225,7 @@ class Generate {
 		recDeleteDirectory(root);
 		FileSystem.createDirectory(root);
 
+		File.saveContent(root + "/CustomSignal.hx", File.getContent("src/CustomSignal.hx"));
 		File.saveContent(root + "/Godot.hx", File.getContent("src/Godot.hx"));
 		File.saveContent(root + "/Nullable1.hx", File.getContent("src/Nullable1.hx"));
 
@@ -56,146 +234,70 @@ class Generate {
 		docUseCache = new Map<String, Bool>();
 
 		for (member in doc.node.doc.node.members.nodes.member) {
-			var doc = "";
-			var textParse;
-
-			function cref(ref:String):String {
-				final t = ref.charAt(0);
-				return switch (t) {
-					case "T":
-						if (ref.startsWith("T:Godot.")) {
-							final path = ref.substr(2).split(".");
-							path.shift();
-
-							"godot." + path.join("_");
-						} else if (ref.startsWith("T:System")) {
-							switch (ref) {
-								case "T:System.String": "String";
-								case "T:System.Boolean": "Bool";
-								case "T:System.Int32": "Int";
-								case "T:System.Single": "Single";
-								case "T:System.Byte": "cs.UInt8";
-								default:
-									final path = ref.substr(2).split(".");
-									final name = path.pop();
-									'cs.${path.map(p -> p.toLowerCase()).join(".")}.$name';
-							}
-						} else {
-							throw "Unsupported " + ref;
-						}
-
-					case "M", "F", "P":
-						if (!ref.substr(1).startsWith(":Godot.")) {
-							throw "Unsupported " + ref;
-						}
-
-						var p = ref.indexOf("(");
-						if (p == -1) {
-							p = ref.length;
-						}
-						final path = ref.substring(2, p).split(".");
-						path.shift();
-						var field = path.pop();
-						final path = path.join("_");
-
-						if (path == "Mathf" && t == "F") {
-							field = field.toUpperCase();
-						} else {
-							field = field.substr(0, 1).toLowerCase() + field.substr(1);
-						}
-
-						'godot.${path}.${field}';
-
-					case "!":
-						ref.substr(2);
-
-					default:
-						throw "Unsupported " + ref;
-				}
-			}
-
-			function innerParse(elem:Access) {
-				switch (elem.name) {
-					case "summary", "remarks", "example":
-						textParse(elem);
-
-					case "para":
-						textParse(elem);
-						doc += "\n";
-
-					case "value":
-						doc += "\nValue: ";
-						textParse(elem);
-						doc += "\n";
-
-					case "returns":
-						doc += "\n@returns ";
-						textParse(elem);
-						doc += "\n";
-
-					case "param":
-						doc += '\n@param ${elem.att.name} ';
-						textParse(elem);
-
-					case "see":
-						if (elem.has.cref) {
-							doc += '`${cref(elem.att.cref)}`';
-						} else if (elem.has.langword) {
-							doc += '`${elem.att.langword}`';
-						} else {
-							throw "Unsupported see " + elem;
-						}
-
-					case "exception":
-						doc += '@throws ${cref(elem.att.cref)}';
-
-					case "c":
-						doc += "`";
-						textParse(elem);
-						doc += "`";
-
-					case "paramref":
-						doc += '`${elem.att.name}`';
-
-					case "code":
-						doc += "\n```\n";
-						textParse(elem);
-						doc += "\n```";
-
-					case "a":
-						doc += '[${elem.att.href}](';
-						textParse(elem);
-						doc += ")";
-
-					default:
-						throw "Unsupported " + elem.name;
-				}
-			}
-
-			function parse(elem:Access) {
-				for (child in elem.elements) {
-					innerParse(child);
-				}
-			}
-
-			textParse = (node:Access) -> {
-				for (i in node.x) {
-					switch (i.nodeType) {
-						case Element:
-							innerParse(new Access(i));
-						case PCData:
-							doc += i.toString();
-						default:
-							throw "Unsupported " + i.nodeType;
-					}
-				}
-			}
-
-			parse(member);
-
+			final doc = extractDoc(member);
 			docCache.set(member.att.name, doc);
 			docUseCache.set(member.att.name, false);
 		}
+
+		signalCache = new Map<String, Array<Signal>>();
+		final json:Array<Api> = Json.parse(File.getContent("input/GodotApi.json"));
+		final signalHandlers = new Map<String, Array<String>>();
+
+		for (api in json) {
+			function changeType(type:String, pools=true):String {
+				final c = type.charAt(0);
+				if (c == c.toUpperCase()) {
+					if (!pools) {
+						return type;
+					}
+					return switch (type) {
+						case "Array": "godot.collections.Array";
+						case "PoolIntArray": "std.Array<Int>";
+						case "PoolByteArray": "std.Array<cs.types.UInt8>";
+						case "PoolFloatArray": "std.Array<Float>";
+						case "PoolStringArray": "std.Array<std.String>";
+						case "PoolColorArray": "std.Array<godot.Color>";
+						case "PoolVector2Array": "std.Array<godot.Vector2>";
+						case "PoolVector3Array": "std.Array<godot.Vector3>";
+						case "Object": "godot.Object";
+						case "String": "std.String";
+						case "Variant": "Any";
+						default: type;
+					}
+				}
+				return switch (type) {
+					case "bool": "Bool";
+					case "float": "Float";
+					case "int": "Int";
+					case "void": "Any";
+					default: throw "Unknown type " + type;
+				}
+			}
+
+			for (signal in api.signals) {
+				signal.handler = "SignalHandler" + (signal.arguments.length == 0 ? "Void" : signal.arguments.map(a -> changeType(a.type, false)).join("")) + "Void";
+
+				for (arg in signal.arguments) {
+					arg.type = changeType(arg.type);
+				}
+
+				signalHandlers.set(signal.handler, signal.arguments.map(a -> a.type));
+			}
+
+			signalCache.set(api.name, api.signals);
+		}
+
+		var signalHandlerTypes = File.getContent("src/Signal.hx");
+
+		for (name => types in signalHandlers) {
+			final sign = (types.length == 0 ? "Void" : "") + types.join("->") + "->Void";
+			final handle = [for (index => type in types) 'arg$index:$type'].join(", ");
+			final args = [for (index => type in types) 'arg$index'].join(", ");
+
+			signalHandlerTypes += '\n@:nativeGen\n@:dox(hide)\nclass $name extends Reference {\n\tstatic final refs = new Map<String, Map<Object, Array<$sign>>>();\n\n\tpublic static function isSignalConnected(source:Object, signal:String, callback:$sign):Bool {\n\t\treturn SignalHandler.isSignalConnected(refs, source, signal, callback);\n\t}\n\n\tpublic static function disconnectSignal(source:Object, signal:String, callback:$sign) {\n\t\tSignalHandler.disconnectSignal(refs, source, signal, callback);\n\t}\n\n\tpublic static function connectSignal(source:Object, signal:String, callback:$sign) {\n\t\tSignalHandler.connectSignal(refs, $name.new, source, signal, callback);\n\t}\n\n\tfinal callback:$sign;\n\n\tfunction new(source:Object, signal:String, callback:$sign) {\n\t\tsuper();\n\t\tthis.callback = callback;\n\n\t\tfinal key = "" + source.getInstanceId() + "-" + signal;\n\n\t\tif (!refs.exists(key)) {\n\t\t\trefs.set(key, new Map<Object, Array<$sign>>());\n\t\t}\n\n\t\trefs.get(key).set(this, [callback]);\n\t}\n\n\t@:keep function handleSignal($handle) {\n\t\tcallback($args);\n\t}\n}\n';
+		}
+
+		File.saveContent(root + "/Signal.hx", signalHandlerTypes);
 
 		final typeGenCache = new Map<String, TypeDefinition>();
 		Context.onTypeNotFound(type -> {
@@ -258,12 +360,8 @@ class Generate {
 				case null:
 					"";
 				case value:
+					final value = reindentDoc(value, indent);
 					final indent = indent ? "\t" : "";
-					final value = value.split("\n").map(line -> line.trim()); // TODO this removes indentation on code blocs
-					while (value.length > 0 && value[value.length - 1] == "") {
-						value.pop();
-					}
-					final value = value.join("\n").replace("\n\n\n", "\n\n").split("\n").map(line -> indent + indent + line).join("\n");
 					docUseCache.set(id, true);
 					'$indent/**$value\n$indent**/\n';
 			}
@@ -597,6 +695,71 @@ class Generate {
 					content += "\n#end";
 				}
 
+				function changeName(name:String, startUppercase = false):String {
+					if (startUppercase) {
+						name = name.substr(0, 1).toUpperCase() + name.substr(1);
+					} else {
+						name = name.substr(0, 1).toLowerCase() + name.substr(1);
+					}
+
+					for (i in 0...name.length) {
+						if (name.charAt(i) == "_") {
+							name = name.substring(0, i + 1) + name.substr(i + 1, 1).toUpperCase() + name.substr(i + 2);
+						}
+					}
+					return name.replace("_", "");
+				}
+
+				if (signalCache.exists(i.name)) {
+					final signalDocsPath = 'input/Godot/doc/classes/${i.name}.xml';
+					final signalDocs = new Map<String, String>();
+
+					if (FileSystem.exists(signalDocsPath)) {
+						final xml = new Access(Xml.parse(File.getContent(signalDocsPath))).node.resolve("class");
+
+						if (xml.hasNode.signals) {
+							for (signal in xml.node.signals.nodes.signal) {
+								final doc = reindentDoc(extractDoc(signal.node.description), true);
+								if (doc.ltrim().length != 0) {
+									final doc = ~/\[([^\]]+)\]/g.map(doc, e -> {
+										final content = e.matched(1);
+										if (content == "code" || content == "/code") {
+											return '`';
+										} else if (content.indexOf(" ") == -1) {
+											return '`$content`';
+										} else if (content.startsWith("method ") || content.startsWith("member ")) {
+											return '`${safename(changeName(content.substr(7)))}`';
+										} else if (content.startsWith("constant ")) {
+											var content = content.substr(9);
+											final p = content.indexOf(".");
+											if (p != 1) {
+												content = content.substr(p + 1);
+											}
+											return '`$content`';
+										} else if (content.startsWith("signal ")) {
+											return '`on${changeName(content.substr(7), true)}`';
+										}
+										throw "Unsupported " + content;
+									});
+									signalDocs.set(signal.att.name, doc);
+								}
+							}
+						}
+					}
+
+					for (signal in signalCache.get(i.name)) {
+						// TODO connect flags
+						final name = "on" + changeName(signal.name, true);
+						final doc = signalDocs.exists(signal.name) ? "\n" + signalDocs.get(signal.name) : "";
+						final doc = '\n\t/**\n\t\t`${signal.name}` signal.$doc\n\t**/\n\t';
+						final singleton = i.superClass == null && i.name != "Object";
+						final visibility = singleton ? "static " : "";
+						final handler = singleton ? "SINGLETON" : "this";
+						final callback = signal.arguments.length == 0 ? "Void->Void" : '(${signal.arguments.map(s -> '${safename(changeName(s.name))}:${s.type}').join(", ")})->Void';
+						content += '${doc}public ${visibility}var ${name}(get, never):Signal<$callback>;\n\t@:dox(hide) inline ${visibility}function get_${name}():Signal<$callback> {\n\t\treturn new Signal($handler, "${signal.name}", Signal.${signal.handler}.connectSignal, Signal.${signal.handler}.disconnectSignal, Signal.${signal.handler}.isSignalConnected);\n\t}\n';
+					}
+				}
+
 				for (field in fields) {
 					var readOnly = false;
 					var metas = ['@:native("${field.name}")'];
@@ -640,7 +803,7 @@ class Generate {
 								readOnly = true;
 							}
 
-							final name = static_ ? uppername(field.name) : safename(field.name.toLowerCase().substr(0, 1) + field.name.substr(1));
+							final name = static_ ? uppername(field.name) : safename(field.name.substr(0, 1).toLowerCase() + field.name.substr(1));
 							final kind = field.kind.match(FVar(_, _)) || field.kind.match(FProp("default", "never", _, _)) ? "F" : "P";
 							final doc = getDoc('$kind:Godot.${i.name.replace("_", ".")}.${field.name}', true);
 							final access = readOnly ? "(default, never)" : "";
@@ -659,19 +822,39 @@ class Generate {
 								continue;
 							}
 
-							final fargs = [for (a in f.args) {
-								final t = switch (a.type) {
-									case macro :cs.system.Nullable_1<$x>: (macro :Nullable1<$x>);
-									case value: value;
+							var hasNull = false;
+							final fargs = [];
+							final docfargs = [];
+
+							for (a in f.args) {
+								var arg = a.type;
+								var docArg = a.type;
+
+								switch (a.type) {
+									case macro :cs.system.Nullable_1<$x>:
+										hasNull = true;
+										arg = (macro :Nullable1<$x>);
+										docArg = (macro :Null<$x>);
+
+									default:
 								};
-								{
+
+								fargs.push({
 									meta: a.meta,
 									name: a.name,
 									opt: a.opt,
-									type: t,
+									type: arg,
 									value: a.value,
-								};
-							}];
+								});
+
+								docfargs.push({
+									meta: a.meta,
+									name: a.name,
+									opt: a.opt,
+									type: docArg,
+									value: a.value,
+								});
+							}
 
 							var name = field.name == "new" ? "new" : safename(field.name.substr(0, 1).toLowerCase() + field.name.substr(1));
 							var overloaded = fieldList.get(field.name) > 1;
@@ -700,8 +883,8 @@ class Generate {
 								}
 							}
 
-							if (singleOverload) {
-								content += '\n\t#if doc_gen\n${doc}\t${metas}public${static_ ? " static" : ""}${fieldList.get(field.name) > 1 ? " overload" : ""} function $name(${fargs.map(a -> (a.opt ? "?" : "") + safename(a.name) + ":" +  path2string(a.type)).join(", ")}):${path2string(f.ret)};\n\t#else';
+							if (singleOverload || hasNull) {
+								content += '\n\t#if doc_gen\n${doc}\t${metas}public${static_ ? " static" : ""}${fieldList.get(field.name) > 1 ? " overload" : ""} function $name(${docfargs.map(a -> (a.opt ? "?" : "") + safename(a.name) + ":" +  path2string(a.type)).join(", ")}):${path2string(f.ret)};\n\t#else';
 							}
 
 							(function print_function(args_count) {
@@ -719,7 +902,7 @@ class Generate {
 								content += '\n${doc}\t${metas}public${static_ ? " static" : ""}${overloaded ? " overload" : ""} function $name(${args.join(", ")}):${path2string(f.ret)};\n';
 							})(fargs.length);
 
-							if (singleOverload) {
+							if (singleOverload || hasNull) {
 								content += "\t#end\n";
 							}
 
