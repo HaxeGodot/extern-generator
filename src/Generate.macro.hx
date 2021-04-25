@@ -173,6 +173,11 @@ class Generate {
 					textParse(elem);
 					doc += ")";
 
+				case "typeparam":
+					doc += '\nType parameter `${elem.att.name}`: ';
+					textParse(elem);
+
+
 				default:
 					throw "Unsupported " + elem.name;
 			}
@@ -346,7 +351,7 @@ class Generate {
 	static function build() {
 		final warning = "// Automatically generated Godot externs: DO NOT EDIT\n// MIT licensed, see LICENSE.md\n";
 		final fields = Context.getBuildFields();
-		final type = Context.getLocalType();
+		final ttype = Context.getLocalType();
 
 		function pack2path(pack:Array<String>) {
 			final path = Path.join([rootPath()].concat(pack));
@@ -383,11 +388,11 @@ class Generate {
 							case [{expr: EConst(CString(value, DoubleQuotes))}]:
 								metas += '@:native("$value")\n';
 							default:
-								throw "Unsupported " + type + " " + meta;
+								throw "Unsupported " + ttype + " " + meta;
 						}
 
 					default:
-						throw "Unsupported " + type + " " + meta.name;
+						throw "Unsupported " + ttype + " " + meta.name;
 				}
 			}
 
@@ -423,7 +428,7 @@ class Generate {
 					return type;
 
 				default:
-					throw "Unsupported " + type + " " + path;
+					throw "Unsupported " + ttype + " " + path;
 			}
 		}
 
@@ -447,7 +452,7 @@ class Generate {
 					case TDynamic(null):
 						"Dynamic";
 					default:
-						throw "Unsupported " + type + " " + p;
+						throw "Unsupported " + ttype + " " + p;
 				}).join(", ") + ">";
 			}
 
@@ -465,7 +470,7 @@ class Generate {
 			}
 		}
 
-		switch (type) {
+		switch (ttype) {
 			case TEnum(_.get() => e, []):
 				final path = pack2path(e.pack);
 				final filename = path + "/" + e.name + ".hx";
@@ -478,7 +483,7 @@ class Generate {
 					switch (field.kind) {
 						case FVar(null, null):
 						default:
-							throw "Unsupported " + type;
+							throw "Unsupported " + ttype;
 					}
 
 					if (field.access.length != 0
@@ -486,7 +491,7 @@ class Generate {
 						|| field.meta[0].name != ":csNative"
 						|| field.meta[0].params.length != 1
 						|| !field.meta[0].params[0].expr.match(EConst(CInt(_)))) {
-						throw "Unsupported " + type;
+						throw "Unsupported " + ttype;
 					}
 
 					final name = field.name;
@@ -500,7 +505,7 @@ class Generate {
 
 			case TInst(_.get() => i, _):
 				if (!i.kind.match(KNormal)) {
-					throw "Unsupported " + type + " " + i.kind;
+					throw "Unsupported " + ttype + " " + i.kind;
 				}
 
 				final ops = Lambda.exists(fields, field -> field.name.startsWith("op_") && field.name != "op_Explicit");
@@ -602,9 +607,12 @@ class Generate {
 									content += '\n\t/**\n\t\tImplicit cast.\n\t**/\n\t@:$type static inline function $type$name(obj:${argPath.pack.join(".") + (argPath.pack.length > 0 ? "." : "") + argPath.name}):$ret {\n\t\treturn cs.Syntax.code("{0}", obj);\n\t}\n';
 
 								default:
-									throw "Unsupported " + type + " " + field.kind;
+									throw "Unsupported " + ttype + " " + field.kind;
 							}
 
+							continue;
+						} else if (field.name == "op_Explicit") {
+							Sys.println('TODO op_Explicit $path $name');
 							continue;
 						}
 
@@ -639,7 +647,7 @@ class Generate {
 							case "op_LessThanOrEqual": "A <= B";
 							case "op_GreaterThanOrEqual": "A >= B";
 							default:
-								throw "Unsupported " + type + " " + field.name;
+								throw "Unsupported " + ttype + " " + field.name;
 						};
 
 						var code = switch (field.name) {
@@ -656,7 +664,7 @@ class Generate {
 							case "op_LessThanOrEqual": "{0} <= {1}";
 							case "op_GreaterThanOrEqual": "{0} >= {1}";
 							default:
-								throw "Unsupported " + type + " " + field.name;
+								throw "Unsupported " + ttype + " " + field.name;
 						};
 
 						var args = fun.args;
@@ -769,11 +777,14 @@ class Generate {
 							case ":readOnly" if (meta.params.length == 0):
 								readOnly = true;
 
-							case ":protected", ":noCompletion", ":skipReflection" if (meta.params.length == 0):
+							case ":protected", ":noCompletion", ":skipReflection", ":keep" if (meta.params.length == 0):
 								metas.push('@${meta.name}');
 
+							case ":event":
+								// TODO
+
 							default:
-								throw "Unsuported " + type + " " + field.meta;
+								throw "Unsuported " + ttype + " " + meta;
 						}
 					}
 
@@ -907,7 +918,7 @@ class Generate {
 							}
 
 						default:
-							throw "Unsupported " + type + " " + field;
+							throw "Unsupported " + ttype + " " + field;
 					}
 				}
 
@@ -916,7 +927,7 @@ class Generate {
 				File.saveContent(filename, content);
 
 			default:
-				throw "Unsupported " + type;
+				throw "Unsupported " + ttype;
 		}
 
 		return fields;
