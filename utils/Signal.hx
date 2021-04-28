@@ -4,6 +4,9 @@ package godot;
 	Typesafe signal.
 **/
 @:nativeGen
+#if !doc_gen
+@:using(godot.SignalUsings)
+#end
 class Signal<T> {
 	final from:Object;
 	final signal:String;
@@ -46,10 +49,21 @@ class Signal<T> {
 	public function isConnected(callback:T):Bool {
 		return isConnectedFn(from, signal, callback);
 	}
+
+	#if doc_gen
+	/**
+		Emit the signal.
+
+		The arguments type and number are checked at compile time.
+	**/
+	public function emitSignal(args:haxe.Rest<Any>):Void {
+	}
+	#end
 }
 
 @:nativeGen
 @:dox(hide)
+@:noCompletion
 class SignalHandler {
 	public static function isSignalConnected<T>(refs:Map<String, Map<Object, Array<T>>>, source:Object, signal:String, callback:T):Bool {
 		final key = '${source.getInstanceId()}-$signal';

@@ -230,9 +230,9 @@ class Generate {
 		recDeleteDirectory(root);
 		FileSystem.createDirectory(root);
 
-		File.saveContent(root + "/CustomSignal.hx", File.getContent("src/CustomSignal.hx"));
-		File.saveContent(root + "/Godot.hx", File.getContent("src/Godot.hx"));
-		File.saveContent(root + "/Nullable1.hx", File.getContent("src/Nullable1.hx"));
+		for (entry in FileSystem.readDirectory("utils")) {
+			File.saveContent(root + "/" + entry, File.getContent("utils/" + entry));
+		}
 
 		final doc = new Access(Xml.parse(File.getContent("input/GodotSharp.xml")));
 		docCache = new Map<String, String>();
@@ -292,14 +292,14 @@ class Generate {
 			signalCache.set(api.name, api.signals);
 		}
 
-		var signalHandlerTypes = File.getContent("src/Signal.hx");
+		var signalHandlerTypes = File.getContent("utils/Signal.hx");
 
 		for (name => types in signalHandlers) {
 			final sign = (types.length == 0 ? "Void" : "") + types.join("->") + "->Void";
 			final handle = [for (index => type in types) 'arg$index:$type'].join(", ");
 			final args = [for (index => type in types) 'arg$index'].join(", ");
 
-			signalHandlerTypes += '\n@:nativeGen\n@:dox(hide)\nclass $name extends Reference {\n\tstatic final refs = new Map<String, Map<Object, Array<$sign>>>();\n\n\tpublic static function isSignalConnected(source:Object, signal:String, callback:$sign):Bool {\n\t\treturn SignalHandler.isSignalConnected(refs, source, signal, callback);\n\t}\n\n\tpublic static function disconnectSignal(source:Object, signal:String, callback:$sign) {\n\t\tSignalHandler.disconnectSignal(refs, source, signal, callback);\n\t}\n\n\tpublic static function connectSignal(source:Object, signal:String, callback:$sign) {\n\t\tSignalHandler.connectSignal(refs, $name.new, source, signal, callback);\n\t}\n\n\tfinal callback:$sign;\n\n\tfunction new(source:Object, signal:String, callback:$sign) {\n\t\tsuper();\n\t\tthis.callback = callback;\n\n\t\tfinal key = "" + source.getInstanceId() + "-" + signal;\n\n\t\tif (!refs.exists(key)) {\n\t\t\trefs.set(key, new Map<Object, Array<$sign>>());\n\t\t}\n\n\t\trefs.get(key).set(this, [callback]);\n\t}\n\n\t@:keep function handleSignal($handle) {\n\t\tcallback($args);\n\t}\n}\n';
+			signalHandlerTypes += '\n@:nativeGen\n@:dox(hide)\n@:noCompletion\nclass $name extends Reference {\n\tstatic final refs = new Map<String, Map<Object, Array<$sign>>>();\n\n\tpublic static function isSignalConnected(source:Object, signal:String, callback:$sign):Bool {\n\t\treturn SignalHandler.isSignalConnected(refs, source, signal, callback);\n\t}\n\n\tpublic static function disconnectSignal(source:Object, signal:String, callback:$sign) {\n\t\tSignalHandler.disconnectSignal(refs, source, signal, callback);\n\t}\n\n\tpublic static function connectSignal(source:Object, signal:String, callback:$sign) {\n\t\tSignalHandler.connectSignal(refs, $name.new, source, signal, callback);\n\t}\n\n\tfinal callback:$sign;\n\n\tfunction new(source:Object, signal:String, callback:$sign) {\n\t\tsuper();\n\t\tthis.callback = callback;\n\n\t\tfinal key = "" + source.getInstanceId() + "-" + signal;\n\n\t\tif (!refs.exists(key)) {\n\t\t\trefs.set(key, new Map<Object, Array<$sign>>());\n\t\t}\n\n\t\trefs.get(key).set(this, [callback]);\n\t}\n\n\t@:keep function handleSignal($handle) {\n\t\tcallback($args);\n\t}\n}\n';
 		}
 
 		File.saveContent(root + "/Signal.hx", signalHandlerTypes);
@@ -764,7 +764,7 @@ class Generate {
 						final visibility = singleton ? "static " : "";
 						final handler = singleton ? "SINGLETON" : "this";
 						final callback = signal.arguments.length == 0 ? "Void->Void" : '(${signal.arguments.map(s -> '${safename(changeName(s.name))}:${s.type}').join(", ")})->Void';
-						content += '${doc}public ${visibility}var ${name}(get, never):Signal<$callback>;\n\t@:dox(hide) inline ${visibility}function get_${name}():Signal<$callback> {\n\t\treturn new Signal($handler, "${signal.name}", Signal.${signal.handler}.connectSignal, Signal.${signal.handler}.disconnectSignal, Signal.${signal.handler}.isSignalConnected);\n\t}\n';
+						content += '${doc}public ${visibility}var ${name}(get, never):Signal<$callback>;\n\t@:dox(hide) @:noCompletion inline ${visibility}function get_${name}():Signal<$callback> {\n\t\treturn new Signal($handler, "${signal.name}", Signal.${signal.handler}.connectSignal, Signal.${signal.handler}.disconnectSignal, Signal.${signal.handler}.isSignalConnected);\n\t}\n';
 					}
 				}
 
