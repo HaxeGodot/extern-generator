@@ -621,7 +621,8 @@ class Generate {
 							default: throw "assert false";
 						};
 						final sign = fun.args.map(a -> safename(a.name) + ":" + path2string(a.type)).join(", ");
-						final overloaded = fieldList.get(field.name) > 1 ? "overload " : "";
+						final vectorConstructorPatch = (i.name == "Vector2" || i.name == "Vector3") && fun.args[0].name == "x";
+						final overloaded = (vectorConstructorPatch || fieldList.get(field.name) > 1) ? "overload " : "";
 						final call = fun.args.map(a -> safename(a.name)).join(", ");
 
 						if (field.name == "new") {
@@ -630,6 +631,22 @@ class Generate {
 							final doc = getDoc('M:Godot.${i.name.replace("_", ".")}.#ctor${docArgs}', true);
 
 							content += '\n\t#if !doc_gen\n${doc}\tpublic ${overloaded}inline function new($sign) {\n\t\tthis = new ${name}_($call);\n\t}\n\t#end\n';
+
+							// Patch Vector constructor with default values
+							if (vectorConstructorPatch) {
+								for (c in 0...fun.args.length) {
+									final args = [for (i in 0...c) fun.args[i]];
+									final sign = args.map(a -> safename(a.name) + ":" + path2string(a.type)).join(", ");
+									final call = args.map(a -> safename(a.name));
+
+									for (_ in c...fun.args.length) {
+										call.push("0");
+									}
+
+									content += '\n\t#if !doc_gen\n${doc}\tpublic ${overloaded}inline function new($sign) {\n\t\tthis = new ${name}_(${call.join(", ")});\n\t}\n\t#end\n';
+								}
+							}
+
 							continue;
 						}
 
@@ -880,10 +897,16 @@ class Generate {
 
 							var singleOverload = false;
 
+							// Patch Actions
+							final action = ["IsActionPressed", "IsActionJustPressed", "IsActionJustReleased", "GetActionStrength", "ActionPress", "ActionRelease"];
+							if (i.name == "Input" && action.indexOf(field.name) != -1) {
+								fargs[0].type = macro :godot.Action;
+							}
+
 							if (fargs.length > 0) {
 								switch (fargs[fargs.length - 1].type) {
 									case macro :cs.NativeArray<$x> if (field.name != "new"):
-										fargs[fargs.length - 1].type = macro:haxe.Rest<$x>;
+										fargs[fargs.length - 1].type = macro :haxe.Rest<$x>;
 										fargs[fargs.length - 1].opt = false;
 									default:
 								}
@@ -900,10 +923,11 @@ class Generate {
 
 							(function print_function(args_count) {
 								final args = [];
+								final patchVectorConstructor = (i.name == "Vector2" || i.name == "Vector3") && name == "new" && fargs[0].name == "x";
 
 								for (i in 0...args_count) {
 									final a = fargs[i];
-									args.push(safename(a.name) + ":" + path2string(a.type));
+									args.push(safename(a.name) + ":" + path2string(a.type) + (patchVectorConstructor ? "#if doc_gen = 0 #end" : ""));
 								}
 
 								if (args_count > 0 && fargs[args_count - 1].opt) {
