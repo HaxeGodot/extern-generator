@@ -14,7 +14,7 @@ You need the commits from <https://github.com/HaxeGodot/haxe/tree/cs-opt> to pro
 
 Create an `input/` directory with:
 
-* `GodotSharp.dll` and `GodotSharp.xml` you can with in the `.mono` folder of a Godot C# project
+* `GodotSharp.dll`, `GodotSharp.xml`, `GodotSharpEditor.dll` and `GodotSharpEditor.xml` which you can find in the `.mono` folder of a Godot C# project
 * `GodotApi.json` generated from `godot --gdnative-generate-json-api GodotApi.json`
 * `Godot/` directory of the Godot engine source code, this does **not** require it to be compiled
 

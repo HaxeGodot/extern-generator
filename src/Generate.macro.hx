@@ -234,14 +234,16 @@ class Generate {
 			File.saveContent(root + "/" + entry, File.getContent("utils/" + entry));
 		}
 
-		final doc = new Access(Xml.parse(File.getContent("input/GodotSharp.xml")));
 		docCache = new Map<String, String>();
 		docUseCache = new Map<String, Bool>();
 
-		for (member in doc.node.doc.node.members.nodes.member) {
-			final doc = extractDoc(member);
-			docCache.set(member.att.name, doc);
-			docUseCache.set(member.att.name, false);
+		for (xml in ["GodotSharp", "GodotSharpEditor"]) {
+			final doc = new Access(Xml.parse(File.getContent('input/$xml.xml')));
+			for (member in doc.node.doc.node.members.nodes.member) {
+				final doc = extractDoc(member);
+				docCache.set(member.att.name, doc);
+				docUseCache.set(member.att.name, false);
+			}
 		}
 
 		signalCache = new Map<String, Array<Signal>>();
