@@ -539,7 +539,7 @@ class Generate {
 
 				function arg2doc(atype) {
 					return switch (atype) {
-						case macro :Nullable1<$x>:
+						case macro :cs.system.Nullable_1<$x>:
 							'System.Nullable{${arg2doc(x)}}';
 
 						case TPath(p) if (p.pack.length > 0 && p.pack[0] == "godot"):
@@ -789,7 +789,7 @@ class Generate {
 
 				for (field in fields) {
 					var readOnly = false;
-					var metas = ['@:native("${field.name}")'];
+					var metas = [];
 
 					for (meta in field.meta) {
 						switch (meta.name) {
@@ -807,7 +807,6 @@ class Generate {
 						}
 					}
 
-					final metas = metas.join(" ") + "\n\t";
 					final static_ = field.access.contains(AStatic);
 
 					function uppername(name:String):String {
@@ -837,6 +836,7 @@ class Generate {
 							final kind = field.kind.match(FVar(_, _)) || field.kind.match(FProp("default", "never", _, _)) ? "F" : "P";
 							final doc = getDoc('$kind:Godot.${i.name.replace("_", ".")}.${field.name}', true);
 							final access = readOnly ? "(default, never)" : "";
+							final metas = ['@:native("${field.name}")'].concat(metas).join(" ") + "\n\t";
 
 							content += '\n${doc}\t${metas}public${static_ ? " static" : ""} var $name$access:${path2string(t)};\n';
 
@@ -856,7 +856,8 @@ class Generate {
 							final fargs = [];
 							final docfargs = [];
 
-							for (a in f.args) {
+							for (i in 0...f.args.length) {
+								final a = f.args[i];
 								var arg = a.type;
 								var docArg = a.type;
 
@@ -865,6 +866,10 @@ class Generate {
 										hasNull = true;
 										arg = (macro :Nullable1<$x>);
 										docArg = (macro :Null<$x>);
+
+									case macro :cs.NativeArray<$x> if (i != f.args.length - 1):
+										arg = (macro :HaxeArray<$x>);
+										docArg = (macro :std.Array<$x>);
 
 									default:
 								};
@@ -886,9 +891,22 @@ class Generate {
 								});
 							}
 
+							var returnArray = false;
+							var retType = f.ret;
+
+							switch (f.ret) {
+								case macro :cs.NativeArray<$x>:
+									returnArray = true;
+									retType = (macro :std.Array<$x>);
+
+								default:
+							}
+
+							final inlined = returnArray ? " extern inline" : "";
+							final metas = (returnArray ? [] : ['@:native("${field.name}")']).concat(metas).join(" ") + ((!returnArray || metas.length > 0) ? "\n\t" : "");
 							var name = field.name == "new" ? "new" : safename(field.name.substr(0, 1).toLowerCase() + field.name.substr(1));
 							var overloaded = fieldList.get(field.name) > 1;
-							final docArgs = fargs.map(a -> arg2doc(a.type));
+							final docArgs = f.args.map(a -> arg2doc(a.type));
 							final docArgs = docArgs.length > 0 ? '(${docArgs.join(",")})' : "";
 							final docName = field.name == "new" ? "#ctor" : field.name;
 							var doc = getDoc('M:Godot.${i.name.replace("_", ".")}.${docName}${docArgs}', true);
@@ -920,7 +938,11 @@ class Generate {
 							}
 
 							if (singleOverload || hasNull) {
-								content += '\n\t#if doc_gen\n${doc}\t${metas}public${static_ ? " static" : ""}${fieldList.get(field.name) > 1 ? " overload" : ""} function $name(${docfargs.map(a -> (a.opt ? "?" : "") + safename(a.name) + ":" +  path2string(a.type)).join(", ")}):${path2string(f.ret)};\n\t#else';
+								final syntax = [for (i in 0...f.args.length) '{${i + (static_ ? 0 : 1)}}'].join(", ");
+								final call = (static_ ? [] : ["this"]).concat(docfargs.map(a -> safename(a.name))).join(", ");
+								final body = returnArray ? ' {\n\t\treturn cs.Lib.array(cs.Syntax.code("${static_ ? "" : "{0}."}${field.name}($syntax)"${call != "" ? ", " : ""}$call));\n\t}' : ";";
+
+								content += '\n\t#if doc_gen\n${doc}\t${metas}public${static_ ? " static" : ""}${fieldList.get(field.name) > 1 ? " overload" : ""}${inlined} function $name(${docfargs.map(a -> (a.opt ? "?" : "") + safename(a.name) + ":" +  path2string(a.type)).join(", ")}):${path2string(retType)}${body}\n\t#else';
 							}
 
 							(function print_function(args_count) {
@@ -936,7 +958,11 @@ class Generate {
 									print_function(args_count - 1);
 								}
 
-								content += '\n${doc}\t${metas}public${static_ ? " static" : ""}${overloaded ? " overload" : ""} function $name(${args.join(", ")}):${path2string(f.ret)};\n';
+								final syntax = [for (i in 0...args.length) '{${i + (static_ ? 0 : 1)}}'].join(", ");
+								final call = (static_ ? [] : ["this"]).concat([for (i in 0...args.length) safename(fargs[i].name)]).join(", ");
+								final body = returnArray ? ' {\n\t\treturn cs.Lib.array(cs.Syntax.code("${static_ ? "" : "{0}."}${field.name}($syntax)"${call != "" ? ", " : ""}$call));\n\t}' : ";";
+
+								content += '\n${doc}\t${metas}public${static_ ? " static" : ""}${overloaded ? " overload" : ""}${inlined} function $name(${args.join(", ")}):${path2string(retType)}${body}\n';
 							})(fargs.length);
 
 							if (singleOverload || hasNull) {
