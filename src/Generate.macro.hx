@@ -31,6 +31,7 @@ typedef Signal = {
 // TODO https://github.com/HaxeFoundation/hxcs/issues/51
 // TODO check flags xorability
 // TODO add System.ObsoleteAttribute parsing to haxe
+// TODO add C# params argument attribute (rest) to Haxe
 class Generate {
 	static var docCache:Map<String, String> = null;
 	static var docUseCache:Map<String, Bool> = null;
@@ -856,8 +857,8 @@ class Generate {
 							final fargs = [];
 							final docfargs = [];
 
-							for (i in 0...f.args.length) {
-								final a = f.args[i];
+							for (j in 0...f.args.length) {
+								final a = f.args[j];
 								var arg = a.type;
 								var docArg = a.type;
 
@@ -867,7 +868,7 @@ class Generate {
 										arg = (macro :Nullable1<$x>);
 										docArg = (macro :Null<$x>);
 
-									case macro :cs.NativeArray<$x> if (i != f.args.length - 1):
+									case macro :cs.NativeArray<$x> if (j != f.args.length - 1 || i.name != "GD"):
 										arg = (macro :HaxeArray<$x>);
 										docArg = (macro :std.Array<$x>);
 
@@ -925,7 +926,7 @@ class Generate {
 
 							if (fargs.length > 0) {
 								switch (fargs[fargs.length - 1].type) {
-									case macro :cs.NativeArray<$x> if (field.name != "new"):
+									case macro :cs.NativeArray<$x> if (field.name != "new" && i.name == "GD"):
 										fargs[fargs.length - 1].type = macro :haxe.Rest<$x>;
 										fargs[fargs.length - 1].opt = false;
 									default:

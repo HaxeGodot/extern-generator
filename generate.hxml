@@ -1,6 +1,7 @@
 -D unsafe
 --cs build
 --net-lib ./input/GodotSharp.dll
+--net-lib ./input/GodotSharpEditor.dll
 --macro Generate.api()
 --macro addGlobalMetadata("godot", "@:build(Generate.build())")
 -D no-compilation
