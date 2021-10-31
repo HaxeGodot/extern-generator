@@ -1,4 +1,5 @@
 import haxe.Json;
+import haxe.io.Eof;
 import haxe.io.Path;
 import haxe.macro.Type.ClassType;
 import haxe.macro.Compiler;
@@ -7,6 +8,7 @@ import haxe.macro.Expr;
 import haxe.xml.Access;
 import sys.FileSystem;
 import sys.io.File;
+import sys.io.Process;
 
 using StringTools;
 
@@ -30,12 +32,13 @@ typedef Signal = {
 // TODO https://github.com/godotengine/godot/issues/28293
 // TODO https://github.com/HaxeFoundation/hxcs/issues/51
 // TODO check flags xorability
-// TODO add System.ObsoleteAttribute parsing to haxe
 // TODO add C# params argument attribute (rest) to Haxe
 class Generate {
 	static var docCache:Map<String, String> = null;
 	static var docUseCache:Map<String, Bool> = null;
 	static var signalCache:Map<String, Array<Signal>> = null;
+	static var deprecatedCache:Map<String, Map<String, String>> = null;
+	static var deprecatedUseCache:Map<String, Map<String, Bool>> = null;
 
 	static function recDeleteDirectory(path:String) {
 		if (!FileSystem.exists(path) || !FileSystem.isDirectory(path)) {
@@ -307,6 +310,35 @@ class Generate {
 
 		File.saveContent(root + "/Signal.hx", signalHandlerTypes);
 
+		deprecatedCache = new Map<String, Map<String, String>>();
+		deprecatedUseCache = new Map<String, Map<String, Bool>>();
+
+		final p = new Process("mono", ["build/bin/ListDeprecated.exe"]);
+		final deprecatedList = [];
+		while (true) {
+			try {
+				deprecatedList.push(p.stdout.readLine());
+			} catch (e:Eof) {
+				break;
+			}
+		}
+		p.close();
+
+		var i = 0;
+		while (i < deprecatedList.length) {
+			final cls = deprecatedList[i++];
+			final member = deprecatedList[i++];
+			final message = deprecatedList[i++];
+
+			if (!deprecatedCache.exists(cls)) {
+				deprecatedCache[cls] = new Map<String, String>();
+				deprecatedUseCache[cls] = new Map<String, Bool>();
+			}
+
+			deprecatedCache[cls][member] = message;
+			deprecatedUseCache[cls][member] = false;
+		}
+
 		final typeGenCache = new Map<String, TypeDefinition>();
 		Context.onTypeNotFound(type -> {
 			if (typeGenCache.exists(type)) {
@@ -346,6 +378,17 @@ class Generate {
 					Sys.println('Missing $member');
 				}
 			}
+
+			// TODO temp
+			var i = 0;
+			for (_ => members in deprecatedUseCache) {
+				for (used in members) {
+					if (!used) {
+						i++;
+					}
+				}
+			}
+			Sys.println('Unused deprecated message(s): $i');
 
 			Sys.println("Done.");
 		});
@@ -721,6 +764,11 @@ class Generate {
 
 				if (ops) {
 					content += "\n#end";
+				}
+
+				// Patch for loop support in godot.collections.Array
+				if (name == "Array" && i.pack.length == 2 && i.pack[0] == "godot" && i.pack[1] == "collections") {
+					content += "\n\tinline function iterator():Iterator<Any> {\n\t\treturn new godot.ArrayIterator(this);\n\t}\n";
 				}
 
 				function changeName(name:String, startUppercase = false):String {

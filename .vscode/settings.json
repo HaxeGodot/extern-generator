@@ -2,7 +2,10 @@
 	"haxe.configurations": [
 		{
 			"label": "Completion",
-			"args": []
+			"args": [
+				"--cs",
+				"build"
+			]
 		}
 	],
 	"haxe.enableCompilationServer": false

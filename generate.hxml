@@ -1,11 +1,20 @@
--D unsafe
+--class-path src
+--define net-ver=50
+--define unsafe
+
+--each
+
+--main ListDeprecated
+--cs build
+
+--next
+
 --cs build
 --net-lib ./input/GodotSharp.dll
 --net-lib ./input/GodotSharpEditor.dll
 --macro Generate.api()
 --macro addGlobalMetadata("godot", "@:build(Generate.build())")
--D no-compilation
--D net-ver=50
---class-path src
+--define no-compilation
 --main Main
--D dump=pretty
+--define dump=pretty
+--define output=../godot/
