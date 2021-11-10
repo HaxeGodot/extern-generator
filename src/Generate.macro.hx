@@ -768,7 +768,7 @@ class Generate {
 
 				// Patch for loop support in godot.collections.Array
 				if (name == "Array" && i.pack.length == 2 && i.pack[0] == "godot" && i.pack[1] == "collections") {
-					content += "\n\tinline function iterator():Iterator<Any> {\n\t\treturn new godot.ArrayIterator(this);\n\t}\n";
+					content += "\n\tinline function iterator():Iterator<Any> {\n\t\treturn new godot.GodotArrayIterator(this);\n\t}\n";
 				}
 
 				function changeName(name:String, startUppercase = false):String {
