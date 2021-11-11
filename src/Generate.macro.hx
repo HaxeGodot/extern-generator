@@ -258,7 +258,7 @@ class Generate {
 			final doc = new Access(Xml.parse(File.getContent('input/$xml.xml')));
 			for (member in doc.node.doc.node.members.nodes.member) {
 				final doc = extractDoc(member);
-				docCache.set(member.att.name, doc);
+				docCache.set(member.att.name, doc.replace("*/", "* /"));
 				docUseCache.set(member.att.name, false);
 			}
 		}
