@@ -95,6 +95,11 @@ class Generate {
 					}
 
 				case "M", "F", "P":
+					switch (ref) {
+						case "M:System.Math.Max(System.Single,System.Single)":
+							return "Math.max";
+					}
+
 					if (!ref.substr(1).startsWith(":Godot.")) {
 						throw "Unsupported " + ref;
 					}
@@ -143,6 +148,9 @@ class Generate {
 					textParse(elem);
 					doc += "\n";
 
+				case "seealso":
+					doc += '@see `${cref(elem.att.cref)}`';
+
 				case "param":
 					doc += '\n@param ${elem.att.name} ';
 					textParse(elem);
@@ -157,7 +165,11 @@ class Generate {
 					}
 
 				case "exception":
-					doc += '@throws ${cref(elem.att.cref)}';
+					if (!elem.has.cref) {
+						doc += '@throws ${elem.att.name}';
+					} else {
+						doc += '@throws ${cref(elem.att.cref)}';
+					}
 
 				case "c":
 					doc += "`";
@@ -181,6 +193,7 @@ class Generate {
 					doc += '\nType parameter `${elem.att.name}`: ';
 					textParse(elem);
 
+				case "inheritdoc":
 
 				default:
 					throw "Unsupported " + elem.name;
@@ -373,10 +386,15 @@ class Generate {
 		});
 
 		Context.onAfterGenerate(() -> {
+			final missings = [];
 			for (member => used in docUseCache) {
 				if (!used) {
-					Sys.println('Missing $member');
+					missings.push(member);
 				}
+			}
+			missings.sort(Reflect.compare);
+			for (member in missings) {
+				Sys.println('Missing $member');
 			}
 
 			// TODO temp
