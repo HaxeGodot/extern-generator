@@ -20,7 +20,7 @@ import godot.AnimationNodeBlendSpace2D;
 import godot.AnimationNodeBlendSpace2D.AnimationNodeBlendSpace2D_BlendModeEnum;
 import godot.AnimationNodeBlendTree;
 import godot.AnimationNodeOneShot;
-import godot.AnimationNodeOneShot.AnimationNodeOneShot_MixMode;
+import godot.AnimationNodeOneShot.AnimationNodeOneShot_MixModeEnum;
 import godot.AnimationNodeOutput;
 import godot.AnimationNodeStateMachine;
 import godot.AnimationNodeStateMachinePlayback;
