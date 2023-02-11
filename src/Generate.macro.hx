@@ -899,6 +899,10 @@ class Generate {
 								readOnly = true;
 							}
 
+							if (readOnly) {
+								metas.push("@:readOnly");
+							}
+
 							final name = static_ ? uppername(field.name) : safename(field.name.substr(0, 1).toLowerCase() + field.name.substr(1));
 							final kind = field.kind.match(FVar(_, _)) || field.kind.match(FProp("default", "never", _, _)) ? "F" : "P";
 							final doc = getDoc('$kind:Godot.${i.name.replace("_", ".")}.${field.name}', true);
